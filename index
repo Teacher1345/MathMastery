@@ -1,0 +1,542 @@
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { 
+  Calculator, 
+  CheckCircle2, 
+  XCircle, 
+  Trophy, 
+  ArrowRight, 
+  RotateCcw,
+  User,
+  Star,
+  Hash,
+  Divide,
+  X,
+  Plus,
+  AlertTriangle
+} from 'lucide-react';
+
+// --- Firebase Configuration ---
+// Prioritize environment config to ensure compatibility with the sandbox environment
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : {
+      apiKey: "AIzaSyCvA1_hdIFlyrI1RSWxlB8CdPm90_ZVydg",
+      authDomain: "mathmastery-ddcff.firebaseapp.com",
+      projectId: "mathmastery-ddcff",
+      storageBucket: "mathmastery-ddcff.firebasestorage.app",
+      messagingSenderId: "355248597104",
+      appId: "1:355248597104:web:539f9e15b8b622fc9c6cb5"
+    };
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'math-mastery-default';
+
+const App = () => {
+  const [user, setUser] = useState(null);
+  const [authError, setAuthError] = useState(null);
+  const [userName, setUserName] = useState('');
+  const [gameState, setGameState] = useState('landing'); // landing, level_intro, playing, activity_fail, activity_pass, game_complete
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [stats, setStats] = useState({
+    questionsAttempted: 0,
+    correctAnswers: 0,
+  });
+  const [currentQuestion, setCurrentQuestion] = useState(null);
+  const [userAnswer, setUserAnswer] = useState('');
+  const [absAnswer, setAbsAnswer] = useState(''); // Specific for Activity 1
+  const [feedback, setFeedback] = useState(null);
+
+  // --- Auth Setup ---
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Firebase Auth Error:", err);
+        setAuthError(err.message);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // --- Level Definitions ---
+  const levels = {
+    1: {
+      title: "Integer Sums & Absolute Values",
+      desc: "Identify the sum of two integers and its absolute value.",
+      target: 3,
+      maxQuestions: 10,
+      icon: <Plus className="w-8 h-8 text-blue-500" />
+    },
+    2: {
+      title: "Subtraction Specialist",
+      desc: "Find the difference between 1, 2, or 3-digit numbers.",
+      target: 3,
+      maxQuestions: 10,
+      icon: <Hash className="w-8 h-8 text-indigo-500" />
+    },
+    3: {
+      title: "Multiplication Table Master",
+      desc: "Find the missing products from 1 to 12.",
+      target: 3,
+      maxQuestions: 10,
+      icon: <X className="w-8 h-8 text-green-500" />
+    },
+    4: {
+      title: "Division Dash",
+      desc: "Calculate the quotient (result is 20 or below).",
+      target: 3,
+      maxQuestions: 10,
+      icon: <Divide className="w-8 h-8 text-orange-500" />
+    },
+    5: {
+      title: "Squaring Skills",
+      desc: "Square a single-digit number.",
+      target: 2,
+      maxQuestions: 10,
+      isMultipleChoice: true,
+      icon: <Star className="w-8 h-8 text-yellow-500" />
+    },
+    6: {
+      title: "Square Root Search",
+      desc: "Find the square root of perfect squares.",
+      target: 2,
+      maxQuestions: 10,
+      icon: <Calculator className="w-8 h-8 text-purple-500" />
+    }
+  };
+
+  // --- Question Logic ---
+  const generateQuestion = (level) => {
+    let q = { level };
+    const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+    switch (level) {
+      case 1: {
+        const a = rand(-99, 99);
+        const b = rand(-99, 99);
+        q.text = `Calculate: ${a} + (${b})`;
+        q.answer = a + b;
+        q.absAnswer = Math.abs(a + b);
+        break;
+      }
+      case 2: {
+        const types = [9, 99, 999];
+        const a = rand(1, types[rand(0, 2)]);
+        const b = rand(1, types[rand(0, 2)]);
+        q.text = `What is ${Math.max(a, b)} - ${Math.min(a, b)}?`;
+        q.answer = Math.max(a, b) - Math.min(a, b);
+        break;
+      }
+      case 3: {
+        const a = rand(1, 12);
+        const b = rand(1, 12);
+        q.text = `What is ${a} × ${b}?`;
+        q.answer = a * b;
+        break;
+      }
+      case 4: {
+        const quotient = rand(1, 20);
+        const divisor = rand(1, 12);
+        const dividend = quotient * divisor;
+        q.text = `What is ${dividend} ÷ ${divisor}?`;
+        q.answer = quotient;
+        break;
+      }
+      case 5: {
+        const num = rand(1, 9);
+        q.text = `What is ${num}²?`;
+        q.answer = num * num;
+        let choices = [q.answer];
+        while (choices.length < 4) {
+          const wrong = rand(1, 81);
+          if (!choices.includes(wrong)) choices.push(wrong);
+        }
+        q.choices = choices.sort(() => Math.random() - 0.5);
+        break;
+      }
+      case 6: {
+        const root = rand(4, 31);
+        const square = root * root;
+        q.text = `What is √${square}?`;
+        q.answer = root;
+        break;
+      }
+      default: break;
+    }
+    setCurrentQuestion(q);
+    setUserAnswer('');
+    setAbsAnswer('');
+    setFeedback(null);
+  };
+
+  const startLevel = () => {
+    setStats({ questionsAttempted: 0, correctAnswers: 0 });
+    setGameState('playing');
+    generateQuestion(currentLevel);
+  };
+
+  const handleSubmit = (e) => {
+    if (e) e.preventDefault();
+    if (feedback) return;
+
+    let isCorrect = false;
+    if (currentLevel === 1) {
+      isCorrect = parseInt(userAnswer) === currentQuestion.answer && 
+                  parseInt(absAnswer) === currentQuestion.absAnswer;
+    } else {
+      isCorrect = parseInt(userAnswer) === currentQuestion.answer;
+    }
+
+    const newStats = {
+      questionsAttempted: stats.questionsAttempted + 1,
+      correctAnswers: isCorrect ? stats.correctAnswers + 1 : stats.correctAnswers
+    };
+    setStats(newStats);
+
+    if (isCorrect) {
+      setFeedback('correct');
+    } else {
+      setFeedback('wrong');
+    }
+
+    setTimeout(() => {
+      checkProgress(newStats);
+    }, 1200);
+  };
+
+  const checkProgress = (currentStats) => {
+    const levelData = levels[currentLevel];
+    if (currentStats.correctAnswers >= levelData.target) {
+      setGameState('activity_pass');
+      return;
+    }
+    if (currentStats.questionsAttempted >= levelData.maxQuestions) {
+      setGameState('activity_fail');
+      return;
+    }
+    generateQuestion(currentLevel);
+  };
+
+  const saveToCloud = async () => {
+    if (!user) return;
+    try {
+      // Mandatory pathing: /artifacts/{appId}/public/data/{collectionName}
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'scores'), {
+        userName,
+        completedAt: serverTimestamp(),
+        levelsCompleted: currentLevel,
+        userId: user.uid
+      });
+    } catch (err) {
+      console.error("Error saving score:", err);
+    }
+  };
+
+  const proceedNext = () => {
+    if (currentLevel === 6) {
+      saveToCloud();
+      setGameState('game_complete');
+    } else {
+      setCurrentLevel(prev => prev + 1);
+      setGameState('level_intro');
+    }
+  };
+
+  const retryLevel = () => {
+    setGameState('level_intro');
+  };
+
+  // --- UI Rendering ---
+
+  // Auth Error Screen
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-red-100">
+          <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Configuration Issue</h2>
+          <p className="text-slate-500 text-sm mb-6">
+            There was a problem connecting to the math challenge database. Please ensure Anonymous Authentication is enabled in your Firebase console.
+          </p>
+          <div className="bg-red-50 text-red-700 p-3 rounded-lg text-xs font-mono mb-6 overflow-hidden">
+            {authError}
+          </div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-slate-800 text-white font-bold py-3 rounded-xl"
+          >
+            Try Refreshing
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'landing') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-slate-100">
+          <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Calculator className="w-10 h-10 text-blue-600" />
+          </div>
+          <h1 className="text-3xl font-bold text-slate-800 mb-2">Math Mastery</h1>
+          <p className="text-slate-500 mb-8">Prove your skills across 6 levels to become a Math Master.</p>
+          
+          <div className="space-y-4">
+            <div className="text-left">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Enter Your Name</label>
+              <input 
+                type="text"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                placeholder="Full Name..."
+              />
+            </div>
+            <button 
+              disabled={!userName.trim() || !user}
+              onClick={() => setGameState('level_intro')}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-4 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
+            >
+              {!user ? "Connecting..." : "Start Adventure"} <ArrowRight size={20} />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'level_intro') {
+    const levelData = levels[currentLevel];
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-slate-100 text-center">
+          <div className="inline-block bg-blue-50 text-blue-600 text-xs font-bold px-3 py-1 rounded-full mb-6 uppercase tracking-wider">Level {currentLevel} of 6</div>
+          <div className="mb-6 flex flex-col items-center">
+            {levelData.icon}
+            <h2 className="text-2xl font-bold text-slate-800 mt-2">{levelData.title}</h2>
+            <p className="text-slate-500 mt-2 text-sm">{levelData.desc}</p>
+          </div>
+          
+          <div className="bg-slate-50 rounded-xl p-4 mb-8 text-left">
+            <h3 className="font-semibold text-slate-700 mb-2 text-sm">Level Target:</h3>
+            <ul className="text-xs text-slate-600 space-y-2">
+              <li className="flex items-center gap-2">
+                <CheckCircle2 size={14} className="text-green-500" /> Answer <strong>{levelData.target}</strong> correctly.
+              </li>
+              <li className="flex items-center gap-2">
+                <XCircle size={14} className="text-slate-400" /> Maximum <strong>{levelData.maxQuestions}</strong> attempts.
+              </li>
+            </ul>
+          </div>
+
+          <button 
+            onClick={startLevel}
+            className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-4 rounded-xl shadow-md transition-all"
+          >
+            I'm Ready!
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'playing') {
+    const levelData = levels[currentLevel];
+    return (
+      <div className="min-h-screen bg-slate-50 p-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+                <User size={20} className="text-blue-600" />
+              </div>
+              <div className="hidden sm:block">
+                <p className="text-xs font-medium text-slate-400">Student</p>
+                <p className="text-sm font-bold text-slate-800">{userName}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-medium text-slate-400">Progress: {stats.correctAnswers} / {levelData.target}</p>
+              <div className="w-32 h-2 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                <div 
+                  className="h-full bg-green-500 transition-all duration-300" 
+                  style={{ width: `${(stats.correctAnswers / levelData.target) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
+            <div className="bg-slate-800 p-6 text-white flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold">Level {currentLevel}: {levelData.title}</h2>
+                <p className="text-slate-400 text-xs">Question {stats.questionsAttempted + 1} of {levelData.maxQuestions}</p>
+              </div>
+              <div className="text-2xl font-mono opacity-20">#{stats.questionsAttempted + 1}</div>
+            </div>
+
+            <div className="p-8">
+              <div className="mb-12 text-center">
+                <h3 className="text-3xl md:text-5xl font-bold text-slate-800 tracking-tight">
+                  {currentQuestion?.text}
+                </h3>
+              </div>
+
+              {levelData.isMultipleChoice ? (
+                <div className="grid grid-cols-2 gap-4">
+                  {currentQuestion?.choices?.map((choice, i) => (
+                    <button
+                      key={i}
+                      disabled={!!feedback}
+                      onClick={() => {
+                        setUserAnswer(choice.toString());
+                        setTimeout(() => handleSubmit(), 50);
+                      }}
+                      className={`py-6 px-4 rounded-2xl text-2xl font-bold transition-all border-2 
+                        ${userAnswer === choice.toString() && feedback === 'correct' ? 'bg-green-100 border-green-500 text-green-700' : 
+                          userAnswer === choice.toString() && feedback === 'wrong' ? 'bg-red-100 border-red-500 text-red-700' : 
+                          'bg-slate-50 border-slate-100 hover:border-blue-300 text-slate-700 active:scale-95'}`}
+                    >
+                      {choice}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-6 max-w-sm mx-auto">
+                  <div className="space-y-4">
+                    <div>
+                      {currentLevel === 1 && <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Sum Result</label>}
+                      <input 
+                        autoFocus
+                        type="number"
+                        value={userAnswer}
+                        disabled={!!feedback}
+                        onChange={(e) => setUserAnswer(e.target.value)}
+                        placeholder="Result..."
+                        className="w-full text-center text-4xl font-bold py-4 rounded-2xl border-2 border-slate-100 focus:border-blue-500 outline-none transition-all"
+                      />
+                    </div>
+
+                    {currentLevel === 1 && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase mb-2">Absolute Value</label>
+                        <input 
+                          type="number"
+                          value={absAnswer}
+                          disabled={!!feedback}
+                          onChange={(e) => setAbsAnswer(e.target.value)}
+                          placeholder="|Result|"
+                          className="w-full text-center text-4xl font-bold py-4 rounded-2xl border-2 border-slate-100 focus:border-blue-500 outline-none transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <button 
+                    disabled={!!feedback || (!userAnswer && currentLevel !== 1) || (currentLevel === 1 && (!userAnswer || !absAnswer))}
+                    className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-blue-700 disabled:opacity-50 transition-all text-xl"
+                  >
+                    Check Answer
+                  </button>
+                </form>
+              )}
+
+              {feedback && (
+                <div className={`mt-8 p-4 rounded-2xl text-center flex items-center justify-center gap-3 animate-pulse
+                  ${feedback === 'correct' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                  {feedback === 'correct' ? (
+                    <><CheckCircle2 size={24} /> <span className="font-bold text-xl">Correct!</span></>
+                  ) : (
+                    <><XCircle size={24} /> <span className="font-bold text-xl">The answer was {currentQuestion.answer}</span></>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'activity_pass') {
+    return (
+      <div className="min-h-screen bg-green-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center border-t-8 border-green-500">
+          <Trophy className="w-16 h-16 text-yellow-500 mx-auto mb-6" />
+          <h2 className="text-3xl font-black text-slate-800 mb-2">PASS!</h2>
+          <p className="text-slate-500 mb-8 text-sm">Great work, {userName}! Requirement met.</p>
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <p className="text-[10px] text-slate-400 font-bold uppercase">Correct</p>
+              <p className="text-2xl font-black text-slate-800">{stats.correctAnswers}</p>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <p className="text-[10px] text-slate-400 font-bold uppercase">Attempts</p>
+              <p className="text-2xl font-black text-slate-800">{stats.questionsAttempted}</p>
+            </div>
+          </div>
+          <button 
+            onClick={proceedNext}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
+          >
+            {currentLevel === 6 ? "Finish Journey" : "Next Activity"} <ArrowRight size={20} />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'activity_fail') {
+    return (
+      <div className="min-h-screen bg-red-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center border-t-8 border-red-500">
+          <RotateCcw className="w-16 h-16 text-red-500 mx-auto mb-6" />
+          <h2 className="text-3xl font-black text-slate-800 mb-2">TRY AGAIN!</h2>
+          <p className="text-slate-500 mb-8 text-sm">You need {levels[currentLevel].target} correct. Keep practicing!</p>
+          <button 
+            onClick={retryLevel}
+            className="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-4 rounded-2xl shadow-lg transition-all"
+          >
+            Retry Level {currentLevel}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'game_complete') {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 text-center relative overflow-hidden border-t-8 border-blue-500">
+          <Trophy className="w-24 h-24 text-yellow-500 mx-auto mb-6" />
+          <h2 className="text-4xl font-black text-slate-800 mb-4 tracking-tight">MASTERED!</h2>
+          <p className="text-lg text-slate-600 mb-2 font-medium">{userName}</p>
+          <p className="text-slate-400 mb-8 text-sm">All challenges complete. Results saved.</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-all"
+          >
+            Play Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+export default App;
