@@ -15,7 +15,8 @@ import {
   Divide,
   X,
   Plus,
-  AlertTriangle
+  AlertTriangle,
+  Github
 } from 'lucide-react';
 
 // --- Firebase Configuration ---
@@ -286,8 +287,8 @@ const App = () => {
 
   if (gameState === 'landing') {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 font-sans">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-slate-100">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4 font-sans">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-slate-100 relative">
           <div className="bg-blue-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
             <Calculator className="w-10 h-10 text-blue-600" />
           </div>
@@ -313,6 +314,12 @@ const App = () => {
               {!user ? "Connecting..." : "Start Adventure"} <ArrowRight size={20} />
             </button>
           </div>
+        </div>
+        
+        {/* GitHub Attribution */}
+        <div className="mt-8 flex items-center gap-2 text-slate-400 hover:text-slate-600 transition-colors">
+          <Github size={20} />
+          <a href="#" className="text-sm font-medium">Project on GitHub</a>
         </div>
       </div>
     );
@@ -519,7 +526,7 @@ const App = () => {
 
   if (gameState === 'game_complete') {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-10 text-center relative overflow-hidden border-t-8 border-blue-500">
           <Trophy className="w-24 h-24 text-yellow-500 mx-auto mb-6" />
           <h2 className="text-4xl font-black text-slate-800 mb-4 tracking-tight">MASTERED!</h2>
@@ -531,6 +538,16 @@ const App = () => {
           >
             Play Again
           </button>
+        </div>
+
+        {/* GitHub Attribution Footer */}
+        <div className="mt-12 text-slate-500 flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-1">
+            <Github size={16} />
+            <span>Open Source</span>
+          </div>
+          <span className="opacity-30">|</span>
+          <span>Math Mastery v1.0.0</span>
         </div>
       </div>
     );
